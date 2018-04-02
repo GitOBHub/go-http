@@ -16,5 +16,21 @@ func TestListenAndServe(t *testing.T) {
 }
 
 func (h Hello) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "fuck you")
+	fmt.Fprintf(w, "hello world")
+}
+
+func TestHandleFunc(t *testing.T) {
+	http.HandleFunc("/", sayHello)
+	err := http.ListenAndServe(":5000", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func TestHandlerFunc(t *testing.T) {
+	log.Fatal(http.ListenAndServe(":5000", http.HandlerFunc(sayHello)))
+}
+
+func sayHello(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "hello")
 }

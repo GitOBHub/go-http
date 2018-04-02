@@ -1,57 +1,59 @@
 package http
 
 import (
-	"bufio"
-	"io"
 	"log"
-	"net"
-	"net/url"
-	"strings"
 )
 
 type Handler interface {
 	ServeHTTP(w ResponseWriter, r *Request)
 }
 
-var handler Handler
+type HandlerFunc func(ResponseWriter, *Request)
+
+type ServeMux struct {
+	handlers map[string]HandlerFunc
+}
+
+var defaultServeMux *ServeMux
 
 const (
-	StatusOK int = 200
+	StatusOK       int = 200
+	StatusNotFound int = 404
 )
 
 func ListenAndServe(addr string, h Handler) error {
-	srv := Server{Addr: ":http"}
-	ln, err := srv.Listen("tcp", ":5000")
-	if err != nil {
-		return err
-	}
-	if err := srv.Serve(ln); err != nil {
-		return err
-	}
+	srv := Server{addr, h}
+	return srv.ListenAndServe()
 }
 
-func handleConnection(conn net.Conn) {
-	defer conn.Close()
-	data, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil && err != io.EOF {
+func NewServeMux() *ServeMux {
+	mux := new(ServeMux)
+	mux.handlers = make(map[string]HandlerFunc)
+	return mux
+}
+
+func HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
+	defaultServeMux.handlers[pattern] = HandlerFunc(handler)
+}
+
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+	f(w, r)
+}
+
+func (m ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
+	handler, ok := m.handlers[r.URL.Path]
+	if !ok {
+		NotFound(w, r)
 		return
 	}
-	log.Printf("New request: %s", data)
-	s := strings.SplitN(data, " ", 3)
-	proto := strings.Split(s[2], "\r\n")
-	if len(s) < 3 {
-		io.WriteString(conn, "Bad request\r\n")
-		return
-	}
-	req := new(Request)
-	req.Method, req.Url.Path, req.Proto = s[0], s[1], proto[0]
-	//req := &Request{Method: s[0], Url.Path: s[1], Proto: proto[0]}
-	req.Body = conn
-	respConn := &responseConn{conn, true}
-	switch req.Method {
-	case "GET":
-		handler.ServeHTTP(respConn, req)
-	default:
-		io.WriteString(conn, "Bad request\r\n")
-	}
+	log.Print("ServeMux.ServeHTTP: Found")
+	handler.ServeHTTP(w, r)
+}
+
+func init() {
+	defaultServeMux = NewServeMux()
+}
+
+func NotFound(w ResponseWriter, r *Request) {
+	w.WriteHeader(StatusNotFound)
 }
